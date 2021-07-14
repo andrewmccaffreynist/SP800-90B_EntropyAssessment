@@ -19,13 +19,14 @@
 
 
 [[ noreturn ]] void print_usage() {
-	printf("Usage is: ea_non_iid [-i|-c] [-a|-t] [-v] [-l <index>,<samples> ] <file_name> [bits_per_symbol]\n\n");
+	printf("Usage is: ea_non_iid [-i|-c] [-a|-t] [-v] [-q] [-l <index>,<samples> ] <file_name> [bits_per_symbol]\n\n");
 	printf("\t <file_name>: Must be relative path to a binary file with at least 1 million entries (samples).\n");
 	printf("\t [bits_per_symbol]: Must be between 1-8, inclusive. By default this value is inferred from the data.\n");
 	printf("\t [-i|-c]: '-i' for initial entropy estimate, '-c' for conditioned sequential dataset entropy estimate. The initial entropy estimate is the default.\n");
 	printf("\t [-a|-t]: '-a' produces the 'H_bitstring' assessment using all read bits, '-t' truncates the bitstring used to produce the `H_bitstring` assessment to %d bits. Test all data by default.\n", MIN_SIZE);
 	printf("\t Note: When testing binary data, no `H_bitstring` assessment is produced, so the `-a` and `-t` options produce the same results for the initial assessment of binary data.\n");
 	printf("\t -v: Optional verbosity flag for more output. Can be used multiple times.\n");
+        printf("\t -q: Quiet mode, less output to screen.\n");
 	printf("\t -l <index>,<samples>\tRead the <index> substring of length <samples>.\n");
 	printf("\n");
 	printf("\t Samples are assumed to be packed into 8-bit values, where the least significant 'bits_per_symbol'\n");
@@ -53,6 +54,7 @@
 int main(int argc, char* argv[]){
 	bool initial_entropy, all_bits;
 	int verbose = 0;
+        bool quietMode = false;
 	char *file_path;
 	double H_original, H_bitstring, ret_min_entropy; 
 	data_t data;
@@ -71,7 +73,7 @@ int main(int argc, char* argv[]){
         initial_entropy = true;
         all_bits = true;
 
-        while ((opt = getopt(argc, argv, "icatvlo:")) != -1) {
+        while ((opt = getopt(argc, argv, "icatvloq:")) != -1) {
                 switch(opt) {
                         case 'i':
                                 initial_entropy = true;
@@ -88,6 +90,9 @@ int main(int argc, char* argv[]){
                         case 'v':
                                 verbose++;
                                 break;
+                        case 'q':
+                            quietMode = true;
+                            break;
 			case 'l':
 				inint = strtoull(optarg, &nextOption, 0);
 				if((inint > ULONG_MAX) || (errno == EINVAL) || (nextOption == NULL) || (*nextOption != ',')) {
@@ -115,10 +120,10 @@ int main(int argc, char* argv[]){
         argv += optind;
 
 	// Parse args
-	if((argc != 1) && (argc != 2)){
-		printf("Incorrect usage.\n");
-		print_usage();
-	} 
+	//if((argc != 1) && (argc != 2)){
+	//	printf("Incorrect usage.\n");
+	//	print_usage();
+	//} 
 	// get filename
 	file_path = argv[0];
 
@@ -177,7 +182,7 @@ int main(int argc, char* argv[]){
 	if(!all_bits && (data.blen > MIN_SIZE)) data.blen = MIN_SIZE;
 
 	if((verbose>0) && ((data.alph_size > 2) || !initial_entropy)) printf("Number of Binary Symbols: %ld\n", data.blen);
-	if(data.len < MIN_SIZE) printf("\n*** Warning: data contains less than %d samples ***\n\n", MIN_SIZE);
+	if(data.len < MIN_SIZE && !quietMode) printf("\n*** Warning: data contains less than %d samples ***\n\n", MIN_SIZE);
 	if(verbose>0){
 		if(data.alph_size < (1 << data.word_size)) printf("\nSymbols have been translated.\n");
 	}

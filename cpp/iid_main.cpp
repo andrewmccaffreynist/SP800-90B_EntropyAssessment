@@ -13,13 +13,14 @@
 #include <fstream>
 
 [[ noreturn ]] void print_usage() {
-    printf("Usage is: ea_iid [-i|-c] [-a|-t] [-v] [-l <index>,<samples> ] <file_name> [bits_per_symbol]\n\n");
+    printf("Usage is: ea_iid [-i|-c] [-a|-t] [-v] [-q] [-l <index>,<samples> ] <file_name> [bits_per_symbol]\n\n");
     printf("\t <file_name>: Must be relative path to a binary file with at least 1 million entries (samples).\n");
     printf("\t [bits_per_symbol]: Must be between 1-8, inclusive. By default this value is inferred from the data.\n");
     printf("\t [-i|-c]: '-i' for initial entropy estimate, '-c' for conditioned sequential dataset entropy estimate. The initial entropy estimate is the default.\n");
     printf("\t [-a|-t]: '-a' produces the 'H_bitstring' assessment using all read bits, '-t' truncates the bitstring used to produce the `H_bitstring` assessment to %d bits. Test all data by default.\n", MIN_SIZE);
     printf("\t Note: When testing binary data, no `H_bitstring` assessment is produced, so the `-a` and `-t` options produce the same results for the initial assessment of binary data.\n");
     printf("\t -v: Optional verbosity flag for more output. Can be used multiple times.\n");
+    printf("\t -q: Quiet mode, less output to screen.\n");
     printf("\t -l <index>,<samples>\tRead the <index> substring of length <samples>.\n");
     printf("\n");
     printf("\t Samples are assumed to be packed into 8-bit values, where the least significant 'bits_per_symbol'\n");
@@ -48,6 +49,7 @@ int main(int argc, char* argv[]) {
 
     bool initial_entropy, all_bits;
     int verbose = 0;
+    bool quietMode = false;
     double rawmean, median;
     char* file_path;
     data_t data;
@@ -64,7 +66,7 @@ int main(int argc, char* argv[]) {
     initial_entropy = true;
     all_bits = true;
 
-    while ((opt = getopt(argc, argv, "icatvlo:")) != -1) {
+    while ((opt = getopt(argc, argv, "icatvloq:")) != -1) {
         switch (opt) {
             case 'i':
                 initial_entropy = true;
@@ -80,6 +82,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 'v':
                 verbose++;
+                break;
+            case 'q':
+                quietMode = true;
                 break;
             case 'l':
                 inint = strtoull(optarg, &nextOption, 0);
@@ -108,17 +113,16 @@ int main(int argc, char* argv[]) {
     argv += optind;
 
     // Parse args
-    if ((argc != 2) && (argc != 1)) {
-        printf("Incorrect usage.\n");
-        print_usage();
-    }
+    //if ((argc != 2) && (argc != 1)) {
+    //    printf("Incorrect usage.\n");
+    //    print_usage();
+    //}
 
     // get filename
     file_path = argv[0];
 
     TestRun testRun;
     testRun.SetTimestamp(timestamp);
-    testRun.SetSha256(hash);
     testRun.SetFilename(file_path);
     testRun.SetCategory("IID");
 
@@ -147,7 +151,7 @@ int main(int argc, char* argv[]) {
     sha256_file(file_path, hash);
 
 
-
+    testRun.SetSha256(hash);
 
     if (!read_file_subset(file_path, &data, subsetIndex, subsetSize)) {
 
@@ -180,7 +184,7 @@ int main(int argc, char* argv[]) {
     if (!all_bits && (data.blen > MIN_SIZE)) data.blen = MIN_SIZE;
 
     if ((verbose > 0) && ((data.alph_size > 2) || !initial_entropy)) printf("Number of Binary samples: %ld\n", data.blen);
-    if (data.len < MIN_SIZE) printf("\n*** Warning: data contains less than %d samples ***\n\n", MIN_SIZE);
+    if (data.len < MIN_SIZE && !quietMode) printf("\n*** Warning: data contains less than %d samples ***\n\n", MIN_SIZE);
     if (verbose > 0) {
         if (data.alph_size < (1 << data.word_size)) printf("\nSamples have been translated\n");
     }
@@ -232,55 +236,56 @@ int main(int argc, char* argv[]) {
 
         if ((data.alph_size > 2) || !initial_entropy) {
             h_assessed = min(h_assessed, H_bitstring * data.word_size);
-            printf("H_bitstring = %.17g\n", H_bitstring);
+            if (!quietMode) printf("H_bitstring = %.17g\n", H_bitstring);
         }
 
         if (initial_entropy) {
             h_assessed = min(h_assessed, H_original);
-            printf("H_original: %.17g\n", H_original);
+            if (!quietMode) printf("H_original: %.17g\n", H_original);
         }
 
-        printf("Assessed min entropy: %.17g\n", h_assessed);
+        if (!quietMode) printf("Assessed min entropy: %.17g\n", h_assessed);
     }
     tc.SetH_assessed(h_assessed);
 
-    printf("\n");
+    if (!quietMode) printf("\n");
 
     // Compute chi square stats
     bool chi_square_test_pass = chi_square_tests(data.symbols, sample_size, alphabet_size, verbose);
 
     tc.SetPassed_chi_square_tests(chi_square_test_pass);
-
-    if (chi_square_test_pass) {
-        printf("** Passed chi square tests\n\n");
-    } else {
-        printf("** Failed chi square tests\n\n");
+    if (!quietMode) {
+        if (chi_square_test_pass) {
+            printf("** Passed chi square tests\n\n");
+        } else {
+            printf("** Failed chi square tests\n\n");
+        }
     }
-
     // Compute length of the longest repeated substring stats
     bool len_LRS_test_pass = len_LRS_test(data.symbols, sample_size, alphabet_size, verbose, "Literal");
 
     tc.SetPassed_length_longest_repeated_substring_test(len_LRS_test_pass);
-
-    if (len_LRS_test_pass) {
-        printf("** Passed length of longest repeated substring test\n\n");
-    } else {
-        printf("** Failed length of longest repeated substring test\n\n");
+    if (!quietMode) {
+        if (len_LRS_test_pass) {
+            printf("** Passed length of longest repeated substring test\n\n");
+        } else {
+            printf("** Failed length of longest repeated substring test\n\n");
+        }
     }
-
     // Compute permutation stats
     bool perm_test_pass = permutation_tests(&data, rawmean, median, verbose, tc);
 
-    if (perm_test_pass) {
-        printf("** Passed IID permutation tests\n\n");
-    } else {
-        printf("** Failed IID permutation tests\n\n");
+    if (!quietMode) {
+        if (perm_test_pass) {
+            printf("** Passed IID permutation tests\n\n");
+        } else {
+            printf("** Failed IID permutation tests\n\n");
+        }
     }
-
     testRun.AddTestCase(tc);
 
     testRun.SetErrorLevel(0);
-    
+
     ofstream output;
     output.open(outputfilename);
     output << testRun.GetAsJson();
